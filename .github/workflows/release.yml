@@ -40,10 +40,14 @@ jobs:
 
       - name: Export ONNX model
         run: |
-          optimum-cli export onnx \
-            --model BAAI/bge-small-en \
-            --task feature-extraction \
-            models/bge-small-en/
+          python - <<'EOF'
+          from optimum.exporters.onnx import main_export
+          main_export(
+              model_name_or_path="BAAI/bge-small-en",
+              output="models/bge-small-en/",
+              task="feature-extraction",
+          )
+          EOF
 
       - name: Build with PyInstaller
         run: pyinstaller ferret.spec
@@ -81,10 +85,14 @@ jobs:
 
       - name: Export ONNX model
         run: |
-          optimum-cli export onnx `
-            --model BAAI/bge-small-en `
-            --task feature-extraction `
-            models/bge-small-en/
+          python -c "
+          from optimum.exporters.onnx import main_export
+          main_export(
+              model_name_or_path='BAAI/bge-small-en',
+              output='models/bge-small-en/',
+              task='feature-extraction',
+          )
+          "
 
       - name: Build with PyInstaller
         run: pyinstaller ferret.spec
