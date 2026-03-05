@@ -22,6 +22,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
       - name: Install system dependencies
         run: |
@@ -38,9 +39,17 @@ jobs:
           pip install pyinstaller
           pip install -r requirements-core.txt
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install transformers onnx
+          pip install transformers onnx onnxscript
+
+      - name: Cache ONNX model
+        uses: actions/cache@v4
+        id: model-cache
+        with:
+          path: models/
+          key: onnx-model-bge-small-en
 
       - name: Export ONNX model
+        if: steps.model-cache.outputs.cache-hit != 'true'
         run: python packaging/export_model.py models/bge-small-en
 
       - name: Build with PyInstaller
@@ -69,6 +78,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
       - name: Install Python dependencies
         run: |
@@ -76,9 +86,17 @@ jobs:
           pip install pyinstaller
           pip install -r requirements-core.txt
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install transformers onnx
+          pip install transformers onnx onnxscript
+
+      - name: Cache ONNX model
+        uses: actions/cache@v4
+        id: model-cache
+        with:
+          path: models/
+          key: onnx-model-bge-small-en
 
       - name: Export ONNX model
+        if: steps.model-cache.outputs.cache-hit != 'true'
         run: python packaging/export_model.py models/bge-small-en
 
       - name: Build with PyInstaller

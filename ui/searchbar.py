@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-SCORE_CUTOFF = 0.45
+SCORE_CUTOFF = 0.25
 FONT = "'Helvetica Neue', 'Ubuntu', 'Noto Sans', sans-serif"
 W = 680          # fixed window width
 
