@@ -58,7 +58,8 @@ jobs:
       - name: Package as .deb
         run: |
           VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"   # strip leading 'v'
+          VERSION="${VERSION#v}"
+          [[ "$VERSION" =~ ^[0-9] ]] || VERSION="0.0.0-test"
           bash packaging/build_deb.sh "$VERSION"
 
       - name: Upload .deb to release
