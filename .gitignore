@@ -17,12 +17,19 @@ env/
 ~/ferret/
 config/settings.json
 
+# Build artifacts
+models/
+packaging/_deb_build/
+
 # IDE / editor
 .vscode/
 .idea/
 *.swp
 *.swo
 .DS_Store
+
+# Personal notes / study material
+WALKTHROUGH.md
 
 # Logs
 *.log
