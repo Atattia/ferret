@@ -1,0 +1,105 @@
+name: Build and Release
+
+# Trigger: push a version tag, e.g. git tag v1.0.0 && git push --tags
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # needed to create releases and upload assets
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Linux → ferret_<version>_amd64.deb
+  # ─────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y \
+            tesseract-ocr \
+            libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 \
+            libxkbcommon-x11-0 libxcb-shape0 \
+            upx-ucl
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements-core.txt
+          pip install "optimum[exporters]"
+
+      - name: Export ONNX model
+        run: |
+          optimum-cli export onnx \
+            --model BAAI/bge-small-en \
+            --task feature-extraction \
+            models/bge-small-en/
+
+      - name: Build with PyInstaller
+        run: pyinstaller ferret.spec
+
+      - name: Package as .deb
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"   # strip leading 'v'
+          bash packaging/build_deb.sh "$VERSION"
+
+      - name: Upload .deb to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ferret_*.deb
+          generate_release_notes: true
+
+  # ─────────────────────────────────────────────
+  # Windows → ferret_<version>_windows_setup.exe
+  # ─────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements-core.txt
+          pip install "optimum[exporters]"
+
+      - name: Export ONNX model
+        run: |
+          optimum-cli export onnx `
+            --model BAAI/bge-small-en `
+            --task feature-extraction `
+            models/bge-small-en/
+
+      - name: Build with PyInstaller
+        run: pyinstaller ferret.spec
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build Windows installer
+        env:
+          FERRET_VERSION: ${{ github.ref_name }}
+        run: |
+          $env:FERRET_VERSION = "${{ github.ref_name }}".TrimStart("v")
+          iscc packaging\ferret.iss
+
+      - name: Upload installer to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ferret_*_windows_setup.exe
