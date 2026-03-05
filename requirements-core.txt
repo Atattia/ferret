@@ -1,0 +1,17 @@
+# Runtime dependencies only (used for packaging / PyInstaller builds).
+# The full requirements.txt was generated with pip freeze and includes
+# many dev/experiment packages that are not needed at runtime.
+
+PyQt6>=6.6
+PyMuPDF>=1.23
+python-docx>=1.1
+onnxruntime>=1.17
+sqlite-vec>=0.1
+pynput>=1.7
+watchdog>=4.0
+pytesseract>=0.3
+numpy>=1.26
+psutil>=5.9
+tokenizers>=0.15
+huggingface_hub>=0.20
+pillow>=10.0

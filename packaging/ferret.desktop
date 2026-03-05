@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Ferret
+Comment=Local semantic search for your files
+Exec=/opt/ferret/ferret
+Icon=/opt/ferret/assets/ferret.png
+Terminal=false
+Categories=Utility;FileManager;
+StartupNotify=false

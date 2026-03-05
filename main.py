@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -10,7 +11,29 @@ from ui.tray import FerretTray
 from ui.settings import SettingsWindow
 
 
-CONFIG_PATH = Path(__file__).parent / "config" / "settings.json"
+def _get_config_path() -> Path:
+    """Return config path: user data dir when packaged, project dir in dev."""
+    if getattr(sys, "frozen", False):
+        if sys.platform == "win32":
+            base = Path(os.environ.get("APPDATA", Path.home()))
+        else:
+            base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        config_dir = base / "ferret"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        return config_dir / "settings.json"
+    return Path(__file__).parent / "config" / "settings.json"
+
+
+def _get_bundled_model_path() -> str | None:
+    """Return the model path bundled inside a PyInstaller package, if present."""
+    if getattr(sys, "frozen", False):
+        bundled = Path(sys._MEIPASS) / "models" / "bge-small-en"
+        if (bundled / "onnx" / "model.onnx").exists():
+            return str(bundled)
+    return None
+
+
+CONFIG_PATH = _get_config_path()
 
 
 def load_config() -> dict:
@@ -62,6 +85,14 @@ def main():
     config = load_config()
     db_path = str(Path(config["db_path"]).expanduser())
     model_path = config.get("model_path", "~/ferret/models/bge-small-en")
+
+    # Fall back to bundled model if the configured path doesn't have the files
+    resolved = Path(model_path).expanduser()
+    if not (resolved / "onnx" / "model.onnx").exists():
+        bundled = _get_bundled_model_path()
+        if bundled:
+            print(f"[main] Using bundled model: {bundled}")
+            model_path = bundled
 
     init_db(db_path)
 
