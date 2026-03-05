@@ -40,6 +40,15 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install "optimum[exporters]" onnx
 
+      - name: Diagnose optimum installation
+        run: |
+          pip show optimum
+          pip show onnx
+          pip show torch
+          python -c "import optimum; print('optimum path:', optimum.__file__)"
+          python -c "import optimum.exporters; print('exporters contents:', dir(optimum.exporters))"
+          python -c "import onnx; print('onnx version:', onnx.__version__)"
+
       - name: Export ONNX model
         run: |
           python - <<'EOF'
