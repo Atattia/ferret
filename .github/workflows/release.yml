@@ -38,27 +38,10 @@ jobs:
           pip install pyinstaller
           pip install -r requirements-core.txt
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install "optimum[exporters]" onnx
-
-      - name: Diagnose optimum installation
-        run: |
-          pip show optimum
-          pip show onnx
-          pip show torch
-          python -c "import optimum; print('optimum path:', optimum.__file__)"
-          python -c "import optimum.exporters; print('exporters contents:', dir(optimum.exporters))"
-          python -c "import onnx; print('onnx version:', onnx.__version__)"
+          pip install transformers onnx
 
       - name: Export ONNX model
-        run: |
-          python - <<'EOF'
-          from optimum.exporters.onnx import main_export
-          main_export(
-              model_name_or_path="BAAI/bge-small-en",
-              output="models/bge-small-en/",
-              task="feature-extraction",
-          )
-          EOF
+        run: python packaging/export_model.py models/bge-small-en
 
       - name: Build with PyInstaller
         run: pyinstaller ferret.spec
@@ -93,18 +76,10 @@ jobs:
           pip install pyinstaller
           pip install -r requirements-core.txt
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install "optimum[exporters]" onnx
+          pip install transformers onnx
 
       - name: Export ONNX model
-        run: |
-          python -c "
-          from optimum.exporters.onnx import main_export
-          main_export(
-              model_name_or_path='BAAI/bge-small-en',
-              output='models/bge-small-en/',
-              task='feature-extraction',
-          )
-          "
+        run: python packaging/export_model.py models/bge-small-en
 
       - name: Build with PyInstaller
         run: pyinstaller ferret.spec
