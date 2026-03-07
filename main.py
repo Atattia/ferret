@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
 
-from core.indexer import init_db
+from core.indexer import init_db, rebuild_fts
 from ui.searchbar import SearchBar
 from ui.tray import FerretTray
 from ui.settings import SettingsWindow
@@ -95,6 +95,7 @@ def main():
             model_path = bundled
 
     init_db(db_path)
+    rebuild_fts(db_path)
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)

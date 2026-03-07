@@ -124,6 +124,12 @@ def init_db(db_path: str) -> None:
             chunk_id INTEGER PRIMARY KEY,
             embedding FLOAT[384]
         );
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+            text,
+            content='chunks',
+            content_rowid='id'
+        );
     """)
     db.commit()
     db.close()
@@ -139,13 +145,19 @@ def _serialize_vector(v: np.ndarray) -> bytes:
 
 
 def _delete_file_data(db: sqlite3.Connection, file_id: int) -> None:
-    """Remove all chunk and vector data for a file."""
-    chunk_ids = [r[0] for r in db.execute(
-        "SELECT id FROM chunks WHERE file_id = ?", (file_id,)
-    )]
-    if chunk_ids:
+    """Remove all chunk, vector, and FTS data for a file."""
+    chunk_rows = db.execute(
+        "SELECT id, text FROM chunks WHERE file_id = ?", (file_id,)
+    ).fetchall()
+    if chunk_rows:
+        chunk_ids = [r[0] for r in chunk_rows]
         placeholders = ",".join("?" * len(chunk_ids))
         db.execute(f"DELETE FROM vec_chunks WHERE chunk_id IN ({placeholders})", chunk_ids)
+        for cid, text in chunk_rows:
+            db.execute(
+                "INSERT INTO chunks_fts (chunks_fts, rowid, text) VALUES ('delete', ?, ?)",
+                (cid, text),
+            )
         db.execute(f"DELETE FROM chunks WHERE id IN ({placeholders})", chunk_ids)
 
 
@@ -208,6 +220,10 @@ def index_file(path: str | Path, db_path: str, model_path: str = "~/ferret/model
                 "INSERT INTO vec_chunks (chunk_id, embedding) VALUES (?,?)",
                 (chunk_id, _serialize_vector(vec)),
             )
+            db.execute(
+                "INSERT INTO chunks_fts (rowid, text) VALUES (?,?)",
+                (chunk_id, chunk),
+            )
 
         db.commit()
         print(f"[indexer] Indexed {path.name}: {len(chunks)} chunks")
@@ -237,6 +253,24 @@ def _load_config() -> dict:
             return json.load(f)
     except Exception:
         return {}
+
+
+def rebuild_fts(db_path: str) -> None:
+    """Rebuild the FTS index from existing chunk data (one-time migration)."""
+    db = _connect(db_path)
+    # Create the table if it doesn't exist yet
+    db.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+            text, content='chunks', content_rowid='id'
+        )
+    """)
+    # Clear and rebuild
+    db.execute("INSERT INTO chunks_fts (chunks_fts) VALUES ('delete-all')")
+    db.execute("INSERT INTO chunks_fts (rowid, text) SELECT id, text FROM chunks")
+    db.commit()
+    count = db.execute("SELECT count(*) FROM chunks").fetchone()[0]
+    db.close()
+    print(f"[indexer] Rebuilt FTS index for {count} chunks")
 
 
 def reset_file_hashes(db_path: str) -> int:
