@@ -12,6 +12,13 @@ block_cipher = None
 sqlite_vec_datas = collect_data_files("sqlite_vec")
 sqlite_vec_bins  = collect_dynamic_libs("sqlite_vec")
 
+# Explicitly include vec0.so since collect_* may miss it
+import sqlite_vec as _sv
+_sv_dir = Path(_sv.__file__).parent
+_vec0 = _sv_dir / ("vec0.dll" if os.name == "nt" else "vec0.so")
+if _vec0.exists():
+    sqlite_vec_datas.append((str(_vec0), "sqlite_vec"))
+
 # Bundle the pre-exported ONNX model if present
 model_src = Path("models")
 model_datas = [("models", "models")] if model_src.is_dir() else []
@@ -22,6 +29,17 @@ asset_datas = [("assets", "assets")] if Path("assets").is_dir() else []
 all_datas = sqlite_vec_datas + model_datas + asset_datas
 
 hidden_imports = [
+    # Local packages
+    "core",
+    "core.indexer",
+    "core.searcher",
+    "core.extractor",
+    "core.hasher",
+    "core.watcher",
+    "ui",
+    "ui.searchbar",
+    "ui.tray",
+    "ui.settings",
     # PyQt6
     "PyQt6.QtCore",
     "PyQt6.QtGui",
@@ -60,7 +78,7 @@ excludes = [
 
 a = Analysis(
     ["main.py"],
-    pathex=[],
+    pathex=["."],
     binaries=sqlite_vec_bins,
     datas=all_datas,
     hiddenimports=hidden_imports,

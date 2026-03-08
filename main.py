@@ -82,9 +82,26 @@ def setup_hotkey(callback):
 
 
 def main():
+    try:
+        _main()
+    except Exception as e:
+        # Show a visible error since console=False hides everything
+        try:
+            app = QApplication.instance() or QApplication(sys.argv)
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(None, "Ferret – Startup Error", str(e))
+        except Exception:
+            pass
+        sys.exit(1)
+
+
+def _main():
     config = load_config()
     db_path = str(Path(config["db_path"]).expanduser())
     model_path = config.get("model_path", "~/ferret/models/bge-small-en")
+
+    # Ensure data directory exists (fresh install won't have ~/ferret/)
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
     # Fall back to bundled model if the configured path doesn't have the files
     resolved = Path(model_path).expanduser()

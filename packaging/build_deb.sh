@@ -48,6 +48,10 @@ chmod +x /opt/ferret/ferret
 EOF
 chmod 755 "${DEB_ROOT}/DEBIAN/postinst"
 
+echo "==> Copying icon..."
+mkdir -p "${DEB_ROOT}/usr/share/icons/hicolor/256x256/apps"
+cp "${BUILD_SRC}/_internal/assets/ferret.png" "${DEB_ROOT}/usr/share/icons/hicolor/256x256/apps/ferret.png"
+
 echo "==> Copying desktop file..."
 cp packaging/ferret.desktop "${DEB_ROOT}/usr/share/applications/"
 
