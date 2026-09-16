@@ -20,8 +20,10 @@ if _vec0.exists():
     sqlite_vec_datas.append((str(_vec0), "sqlite_vec"))
 
 # Bundle the pre-exported ONNX model if present
-model_src = Path("models")
-model_datas = [("models", "models")] if model_src.is_dir() else []
+model_src = Path(os.environ.get("FERRET_BUNDLE_MODEL", "models/bge-small-en"))
+model_datas = [(str(model_src), "models/" + model_src.name)] if model_src.is_dir() else []
+if Path("models/tessdata").is_dir():
+    model_datas.append(("models/tessdata", "models/tessdata"))
 
 # Bundle assets if present
 asset_datas = [("assets", "assets")] if Path("assets").is_dir() else []

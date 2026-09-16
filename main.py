@@ -1,14 +1,22 @@
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 
+from PyQt6.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import QApplication
 
 from core.indexer import init_db, rebuild_fts
+from core.indexing_service import IndexingService
+from core.reconciler import queue_reconciliation_actions, reconcile_filesystem
+from core.watcher import FolderWatcher
 from ui.searchbar import SearchBar
 from ui.tray import FerretTray
 from ui.settings import SettingsWindow
+from core.maintenance import config_lock
+from core.extractor import configure_ocr
+from core.models import model_spec, configured_reranker
 
 
 def _get_config_path() -> Path:
@@ -27,13 +35,46 @@ def _get_config_path() -> Path:
 def _get_bundled_model_path() -> str | None:
     """Return the model path bundled inside a PyInstaller package, if present."""
     if getattr(sys, "frozen", False):
-        bundled = Path(sys._MEIPASS) / "models" / "bge-small-en"
-        if (bundled / "onnx" / "model.onnx").exists():
-            return str(bundled)
+        for name in ("qwen3-embedding-0.6b", "bge-m3", "multilingual-e5-small", "bge-small-en"):
+            bundled = Path(sys._MEIPASS) / "models" / name
+            if (bundled / model_spec(bundled).onnx_file).exists():
+                return str(bundled)
     return None
 
 
 CONFIG_PATH = _get_config_path()
+
+# These locations contain generated/dependency text that overwhelms useful
+# personal documents when broad roots such as ~/Documents are indexed.
+BUILTIN_EXCLUDE_PATTERNS = (
+    ".uv-cache",
+    ".venv",
+    "site-packages",
+    ".build",
+    "__pycache__",
+    "node_modules",
+)
+
+
+class SearchToggleDispatcher(QObject):
+    """Marshal global-hotkey callbacks onto Qt's GUI thread."""
+
+    toggle_requested = pyqtSignal()
+
+    def __init__(self, search_bar):
+        super().__init__()
+        self._search_bar = search_bar
+        self.toggle_requested.connect(
+            self._toggle_search,
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+    @pyqtSlot()
+    def _toggle_search(self):
+        if self._search_bar.isVisible():
+            self._search_bar.hide()
+        else:
+            self._search_bar.show_and_focus()
 
 
 def load_config() -> dict:
@@ -83,7 +124,8 @@ def setup_hotkey(callback):
 
 def main():
     try:
-        _main()
+        with config_lock(CONFIG_PATH):
+            _main()
     except Exception as e:
         # Show a visible error since console=False hides everything
         try:
@@ -105,38 +147,103 @@ def _main():
 
     # Fall back to bundled model if the configured path doesn't have the files
     resolved = Path(model_path).expanduser()
-    if not (resolved / "onnx" / "model.onnx").exists():
+    if not (resolved / model_spec(resolved).onnx_file).exists():
         bundled = _get_bundled_model_path()
         if bundled:
             print(f"[main] Using bundled model: {bundled}")
             model_path = bundled
 
-    init_db(db_path)
+    configure_ocr(config)
+    init_db(db_path, model_path)
     rebuild_fts(db_path)
+
+    exclude_patterns = list(dict.fromkeys(
+        [*config.get("exclude_patterns", []), *BUILTIN_EXCLUDE_PATTERNS]
+    ))
+    indexing_service = IndexingService(
+        db_path,
+        model_path,
+        exclude_patterns=exclude_patterns,
+    )
+    indexing_service.start()
+
+    # Keep the filesystem index fresh while the tray application is running.
+    # FolderWatcher ignores missing configured directories, so a stale setting
+    # cannot prevent startup.
+    folder_watcher = FolderWatcher(
+        db_path=db_path,
+        model_path=model_path,
+        indexing_service=indexing_service,
+        exclude_patterns=exclude_patterns,
+    )
+    folder_watcher.reconfigure(config.get("indexed_folders", []))
+    folder_watcher.start()
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
     search_bar = SearchBar(db_path=db_path, model_path=model_path)
+    search_bar.reranker_path = configured_reranker(config)
+    search_bar.rerank_minimum = config.get("rerank_minimum")
+    search_bar.calibration_path = config.get("calibration_path")
+    search_bar.indexing_status = lambda: indexing_service.status
+
+    def _reconcile_and_queue(folders):
+        """Detect changes missed while Ferret was closed, then queue them."""
+        try:
+            actions = reconcile_filesystem(
+                folders,
+                db_path,
+                exclude_patterns=exclude_patterns,
+            )
+            queue_reconciliation_actions(actions, indexing_service)
+            print(f"[main] Reconciliation queued {len(actions)} change(s)")
+        except Exception as e:
+            print(f"[main] Reconciliation failed: {e}")
+
+    def _start_reconciliation(folders=None):
+        selected = list(
+            folders if folders is not None else config.get("indexed_folders", [])
+        )
+        threading.Thread(
+            target=_reconcile_and_queue,
+            args=(selected,),
+            name="ferret-reconcile",
+            daemon=True,
+        ).start()
+
+    def _save_settings(new_config):
+        save_config(config, new_config)
+        configure_ocr(config)
+        search_bar.reranker_path = configured_reranker(config)
+        folder_watcher.reconfigure(config.get("indexed_folders", []))
+        # The watcher deliberately stays stopped when the app launches with no
+        # folders. Start it here when the user configures the first folder.
+        folder_watcher.start()
+        _start_reconciliation()
 
     def open_settings():
-        win = SettingsWindow(config, on_save=lambda new: save_config(config, new), parent=None)
+        win = SettingsWindow(config, on_save=_save_settings, parent=None)
         win.exec()
 
     def _run_index(force: bool = False):
-        from core.indexer import index_folder, reset_file_hashes
-        import threading
+        from core.indexer import reset_file_hashes
         folders = config.get("indexed_folders", [])
-        workers = config.get("indexing_workers", 4)
         if not folders:
             print("[main] No folders configured for indexing")
             return
         def _run():
             if force:
+                indexing_service.wait_for_idle()
                 reset_file_hashes(db_path)
-            for folder in folders:
-                index_folder(folder, db_path, workers=workers, model_path=model_path)
-        threading.Thread(target=_run, daemon=True).start()
+            _reconcile_and_queue(folders)
+        threading.Thread(
+            target=_run, name="ferret-manual-reconcile", daemon=True
+        ).start()
+
+    # Reconciliation covers normal offline changes and embedding migrations:
+    # stale records are emitted as changed even when their file hash matches.
+    _start_reconciliation()
 
     tray = FerretTray(
         app,
@@ -146,13 +253,18 @@ def _main():
         on_quit=app.quit,
     )
 
-    def toggle_search():
-        if search_bar.isVisible():
-            search_bar.hide()
-        else:
-            search_bar.show_and_focus()
+    # pynput invokes callbacks on its own thread. Emitting this signal is
+    # thread-safe; the queued slot above always executes on Qt's main thread.
+    _ui_dispatcher = SearchToggleDispatcher(search_bar)
+    _hotkey = setup_hotkey(_ui_dispatcher.toggle_requested.emit)
 
-    _hotkey = setup_hotkey(toggle_search)
+    # aboutToQuit also covers OS/window-manager shutdown and keeps the
+    # watchdog thread from surviving the Qt event loop.
+    def _shutdown():
+        folder_watcher.stop()
+        indexing_service.stop(drain=False, timeout=2)
+
+    app.aboutToQuit.connect(_shutdown)
 
     print("Ferret is running")
     sys.exit(app.exec())

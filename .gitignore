@@ -7,7 +7,9 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-CLAUDE.md
+# Local coding-agent guidance
+/CLAUDE.md
+/AGENTS.md
 # Virtual environment
 venv/
 .venv/
@@ -16,10 +18,16 @@ env/
 # Ferret runtime data (user-local, not part of the repo)
 ~/ferret/
 config/settings.json
+config/settings.json.lock
+config/settings.json.previous
+data/
+benchmarks/results/
 
 # Build artifacts
 models/
 packaging/_deb_build/
+/ferret_*.deb
+/ferret_*_windows_setup.exe
 
 # IDE / editor
 .vscode/
@@ -33,3 +41,5 @@ WALKTHROUGH.md
 
 # Logs
 *.log
+# sqlite extension scratch-session artifact
+:memory:.ses

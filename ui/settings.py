@@ -4,11 +4,13 @@ from pathlib import Path
 import psutil
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QPushButton,
     QSizePolicy,
@@ -28,7 +30,7 @@ PROFILES = [
     {"label": "Maximum", "emoji": "Fire",      "workers": None, "description": "Uses every available core"},
 ]
 
-OCR_ENGINES = ["pytesseract", "PaddleOCR"]
+OCR_ENGINES = ["pytesseract"]
 
 
 def _ram_gb() -> float:
@@ -104,6 +106,40 @@ class SettingsWindow(QDialog):
         idx = OCR_ENGINES.index(current_ocr) if current_ocr in OCR_ENGINES else 0
         self._ocr_combo.setCurrentIndex(idx)
         layout.addWidget(self._ocr_combo)
+        layout.addWidget(self._section_label("OCR Languages"))
+        self._ocr_languages = QComboBox()
+        self._ocr_languages.addItem("Arabic + English", "ara+eng")
+        self._ocr_languages.addItem("Arabic", "ara")
+        self._ocr_languages.addItem("English", "eng")
+        self._ocr_languages.setCurrentIndex(max(0, self._ocr_languages.findData(
+            self.config.get("ocr_languages", "ara+eng"))))
+        layout.addWidget(self._ocr_languages)
+        layout.addWidget(self._section_label("Local Reranker (optional model folder)"))
+        self._reranker = QLineEdit(self.config.get("reranker_path", ""))
+        layout.addWidget(self._reranker)
+        self._reranking_enabled = QCheckBox("Enable deep reranking (can take several seconds on CPU)")
+        self._reranking_enabled.setChecked(bool(self.config.get("reranking_enabled", False)))
+        layout.addWidget(self._reranking_enabled)
+        from core.models import model_spec
+        spec = model_spec(self.config.get("model_path", ""))
+        model_label = QLabel(f"Search model: {spec.name}\nChanging embeddings requires a separate index rebuild.")
+        model_label.setWordWrap(True)
+        layout.addWidget(model_label)
+        import sqlite3
+        try:
+            path = Path(self.config["db_path"]).expanduser().resolve()
+            db = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
+            try:
+                counts = dict(db.execute("SELECT status,count(*) FROM files GROUP BY status"))
+                warnings = db.execute("SELECT count(*) FROM files WHERE extraction_warning != ''").fetchone()[0]
+            finally:
+                db.close()
+            health = QLabel("Index: " + ", ".join(f"{count} {status}" for status, count in counts.items())
+                            + f" · {warnings} extraction warnings")
+            health.setWordWrap(True)
+            layout.addWidget(health)
+        except (sqlite3.Error, KeyError):
+            layout.addWidget(QLabel("Index health unavailable until the index is initialized."))
 
         # --- Save / Cancel ---
         btn_row = QHBoxLayout()
@@ -156,6 +192,9 @@ class SettingsWindow(QDialog):
         self.config["indexed_folders"] = folders
         self.config["indexing_workers"] = workers
         self.config["ocr_engine"] = ocr_engine
+        self.config["ocr_languages"] = self._ocr_languages.currentData()
+        self.config["reranker_path"] = self._reranker.text().strip()
+        self.config["reranking_enabled"] = self._reranking_enabled.isChecked()
 
         if self.on_save:
             self.on_save(self.config)

@@ -33,7 +33,7 @@ Version: ${VERSION}
 Section: utils
 Priority: optional
 Architecture: ${ARCH}
-Depends: tesseract-ocr, libxcb-xinerama0, libxcb-cursor0, libxcb-icccm4
+Depends: tesseract-ocr, tesseract-ocr-ara, tesseract-ocr-eng, libxcb-xinerama0, libxcb-cursor0, libxcb-icccm4
 Maintainer: Mahmoud Yousry
 Description: Local semantic search for your files
  Ferret watches your folders for document changes and indexes them using

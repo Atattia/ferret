@@ -1,6 +1,5 @@
 # Runtime dependencies only (used for packaging / PyInstaller builds).
-# The full requirements.txt was generated with pip freeze and includes
-# many dev/experiment packages that are not needed at runtime.
+# requirements.txt includes this file plus the desktop packaging tool.
 
 PyQt6>=6.6
 PyMuPDF>=1.23
